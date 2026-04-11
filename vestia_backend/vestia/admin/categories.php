@@ -14,7 +14,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $nameFr  = sanitize($_POST['name_fr'] ?? ''); // ✅ إصلاح 4
         $slug    = strtolower(preg_replace('/[^a-z0-9]+/i', '-', trim($name)));
         if ($name) {
-            $maxOrder = $db->query('SELECT IFNULL(MAX(sort_order),0)+1 FROM categories')->fetchColumn();
+            $maxOrder = $db->query('SELECT COALESCE(MAX(sort_order),0)+1 FROM categories')->fetchColumn();
             try {
                 // ✅ إصلاح 4 — حفظ name_ar و name_fr
                 $db->prepare('INSERT INTO categories (name, name_ar, name_fr, slug, sort_order) VALUES (?,?,?,?,?)')
@@ -43,7 +43,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if ($action === 'delete') {
         $id = (int)$_POST['id'];
-        $db->prepare('DELETE FROM categories WHERE id=? AND slug != "all"')->execute([$id]);
+        $db->prepare("DELETE FROM categories WHERE id=? AND slug != 'all'")->execute([$id]);
         flash('success', 'Category deleted.');
         header('Location:/vestia_backend/vestia/admin/categories.php'); exit;
     }
@@ -61,7 +61,8 @@ $categories = $db->query(
     'SELECT c.*, COUNT(p.id) AS product_count
      FROM categories c
      LEFT JOIN products p ON p.category_id=c.id AND p.is_active=1
-     GROUP BY c.id ORDER BY c.sort_order'
+     GROUP BY c.id, c.name, c.name_ar, c.name_fr, c.slug, c.sort_order
+     ORDER BY c.sort_order'
 )->fetchAll();
 
 $pageTitle = 'Categories';
