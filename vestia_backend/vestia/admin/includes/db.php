@@ -55,7 +55,7 @@ function flash(string $key, string $msg = ''): string {
 }
 
 function formatPrice(float $v): string {
-    return '$ ' . number_format($v, 0, '.', ',');
+    return 'MRU ' . number_format($v, 0, '.', ',');
 }
 
 function timeAgo(string $datetime): string {
