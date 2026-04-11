@@ -39,7 +39,8 @@ $stmt->execute($params);
 $reviews = $stmt->fetchAll();
 
 // Stats
-$avgRating  = $db->query('SELECT IFNULL(ROUND(AVG(rating),2),0) FROM reviews')->fetchColumn();
+// ✅ COALESCE بدلاً من IFNULL مع ::numeric لـ ROUND
+$avgRating  = $db->query('SELECT COALESCE(ROUND(AVG(rating)::numeric,2),0) FROM reviews')->fetchColumn();
 $totalCount = $db->query('SELECT COUNT(*) FROM reviews')->fetchColumn();
 $dist       = $db->query('SELECT rating, COUNT(*) AS cnt FROM reviews GROUP BY rating ORDER BY rating DESC')->fetchAll();
 $distMap    = array_column($dist,'cnt','rating');
