@@ -91,7 +91,8 @@ $offset  = ($page - 1) * $limit;
 
 $where  = ['p.is_active=1'];
 $params = [];
-if ($search)  { $where[] = 'p.name LIKE ?'; $params[] = "%$search%"; }
+// ✅ ILIKE بدلاً من LIKE
+if ($search)  { $where[] = 'p.name ILIKE ?'; $params[] = "%$search%"; }
 if ($catFilt) { $where[] = 'p.category_id=?'; $params[] = $catFilt; }
 $whereSQL = implode(' AND ', $where);
 
@@ -107,7 +108,8 @@ $stmt = $db->prepare(
 $stmt->execute($params);
 $products = $stmt->fetchAll();
 
-$categories = $db->query('SELECT * FROM categories WHERE slug != "all" ORDER BY sort_order')->fetchAll();
+// ✅ علامات اقتباس مفردة بدلاً من المزدوجة
+$categories = $db->query("SELECT * FROM categories WHERE slug != 'all' ORDER BY sort_order")->fetchAll();
 
 $pageTitle = 'Products';
 include __DIR__ . '/includes/header.php';
