@@ -26,7 +26,8 @@ $offset = ($page-1)*$limit;
 
 $where  = ['1=1'];
 $params = [];
-if ($search) { $where[] = '(name LIKE ? OR phone LIKE ?)'; $params[]= "%$search%"; $params[] = "%$search%"; }
+// ✅ ILIKE بدلاً من LIKE
+if ($search) { $where[] = '(name ILIKE ? OR phone ILIKE ?)'; $params[]= "%$search%"; $params[] = "%$search%"; }
 $whereSQL = implode(' AND ', $where);
 
 $total = $db->prepare("SELECT COUNT(*) FROM users WHERE $whereSQL");
@@ -36,7 +37,7 @@ $pages = max(1,(int)ceil($total/$limit));
 $stmt = $db->prepare(
     "SELECT u.*,
             (SELECT COUNT(*) FROM orders WHERE user_id=u.id) AS order_count,
-            (SELECT IFNULL(SUM(total),0) FROM orders WHERE user_id=u.id AND status='Completed') AS total_spent
+            (SELECT COALESCE(SUM(total),0) FROM orders WHERE user_id=u.id AND status='Completed') AS total_spent
      FROM users u WHERE $whereSQL ORDER BY u.created_at DESC LIMIT $limit OFFSET $offset"
 );
 $stmt->execute($params);
