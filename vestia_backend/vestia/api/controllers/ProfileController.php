@@ -3,18 +3,14 @@
 // VESTIA API — Profile Controller
 // ============================================================
 class ProfileController {
-
     public static function show(): void {
         $user = getAuthUser();
         $db   = getDB();
-
         // ✅ جلب phone بدلاً من email
         $stmt = $db->prepare('SELECT id, name, phone, created_at FROM users WHERE id = ?');
         $stmt->execute([$user['id']]);
         $profile = $stmt->fetch();
-
         if (!$profile) jsonError('User not found', 404);
-
         jsonSuccess(['user' => $profile]);
     }
 
@@ -50,6 +46,7 @@ class ProfileController {
             $dup = $db->prepare('SELECT id FROM users WHERE phone = ? AND id != ?');
             $dup->execute([$phone, $user['id']]);
             if ($dup->fetch()) jsonError('Phone number already in use', 409);
+
             $fields[] = 'phone = ?';
             $params[] = $phone;
         }
