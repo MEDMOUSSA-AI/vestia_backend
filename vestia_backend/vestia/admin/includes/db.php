@@ -2,16 +2,15 @@
 // ============================================================
 // VESTIA ADMIN — Database Connection
 // ============================================================
-
-define('DB_HOST', 'localhost');
-define('DB_NAME', 'vestia_db');
-define('DB_USER', 'root');      // ← Change to your DB user
-define('DB_PASS', '');          // ← Change to your DB password
+define('DB_HOST', 'as0ub2.h.filess.io');
+define('DB_NAME', 'vestia_clearfear');
+define('DB_USER', 'vestia_clearfear');
+define('DB_PASS', 'dbc913cca542b171b1d8130156ff7ea1d1c55d93');
 
 function db(): PDO {
     static $pdo = null;
     if ($pdo === null) {
-        $dsn = 'mysql:host=' . DB_HOST . ';dbname=' . DB_NAME . ';charset=utf8mb4';
+        $dsn = 'mysql:host=' . DB_HOST . ';port=3307;dbname=' . DB_NAME . ';charset=utf8mb4';
         $pdo = new PDO($dsn, DB_USER, DB_PASS, [
             PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
             PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
@@ -20,30 +19,26 @@ function db(): PDO {
     }
     return $pdo;
 }
-
 function adminCheck(): void {
     if (session_status() === PHP_SESSION_NONE) {
-    session_start();
-}
+        session_start();
+    }
     if (empty($_SESSION['admin_id'])) {
         header('Location: /vestia_backend/vestia/admin/login.php');
         exit;
     }
 }
-
 function csrf(): string {
     if (empty($_SESSION['csrf'])) {
         $_SESSION['csrf'] = bin2hex(random_bytes(32));
     }
     return $_SESSION['csrf'];
 }
-
 function verifyCsrf(): void {
     if (($_POST['_csrf'] ?? '') !== ($_SESSION['csrf'] ?? '')) {
         die('Invalid CSRF token');
     }
 }
-
 function flash(string $key, string $msg = ''): string {
     if ($msg) {
         $_SESSION['flash_' . $key] = $msg;
@@ -53,11 +48,9 @@ function flash(string $key, string $msg = ''): string {
     unset($_SESSION['flash_' . $key]);
     return $val;
 }
-
 function formatPrice(float $v): string {
     return '$ ' . number_format($v, 0, '.', ',');
 }
-
 function timeAgo(string $datetime): string {
     $diff = time() - strtotime($datetime);
     if ($diff < 60)     return 'just now';
