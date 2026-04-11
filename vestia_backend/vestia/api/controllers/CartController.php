@@ -67,10 +67,13 @@ class CartController {
         $check->execute([$productId]);
         if (!$check->fetch()) jsonError('Product not found', 404);
 
+        // ✅ ON CONFLICT بدلاً من ON DUPLICATE KEY UPDATE (PostgreSQL)
+        // يتطلب وجود UNIQUE constraint على (user_id, product_id, size) في جدول cart_items
         $db->prepare(
             "INSERT INTO cart_items (user_id, product_id, quantity, size)
              VALUES (?, ?, ?, ?)
-             ON DUPLICATE KEY UPDATE quantity = quantity + VALUES(quantity)"
+             ON CONFLICT (user_id, product_id, size)
+             DO UPDATE SET quantity = cart_items.quantity + EXCLUDED.quantity"
         )->execute([$user['id'], $productId, $quantity, $size]);
 
         // ✅ RETURN UPDATED CART IMMEDIATELY - no need to refresh
