@@ -3,19 +3,19 @@
 // VESTIA API — Saved (Wishlist) Controller
 // ============================================================
 class SavedController {
-
     public static function index(): void {
         $user = getAuthUser();
         $db   = getDB();
 
+        // ✅ COALESCE بدلاً من IFNULL
         $stmt = $db->prepare(
             "SELECT p.id, p.name, p.price, p.old_price, p.image_url,
-                    IFNULL(AVG(r.rating), 0) AS avg_rating
+                    COALESCE(AVG(r.rating), 0) AS avg_rating
              FROM saved_items s
              JOIN products p ON p.id = s.product_id
              LEFT JOIN reviews r ON r.product_id = p.id
              WHERE s.user_id = ? AND p.is_active = 1
-             GROUP BY p.id
+             GROUP BY p.id, p.name, p.price, p.old_price, p.image_url
              ORDER BY s.created_at DESC"
         );
         $stmt->execute([$user['id']]);
