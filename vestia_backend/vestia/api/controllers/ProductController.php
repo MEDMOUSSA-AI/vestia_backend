@@ -23,7 +23,7 @@ class ProductController {
         }
 
         if ($search) {
-            $where[]  = 'p.name LIKE ?';
+            $where[]  = 'p.name ILIKE ?';
             $params[] = '%' . $search . '%';
         }
 
@@ -35,13 +35,15 @@ class ProductController {
                        c.id AS category_id, c.name AS category_name,
                        c.name_ar AS category_name_ar, c.name_fr AS category_name_fr,
                        c.slug AS category_slug,
-                       IFNULL(AVG(r.rating), 0) AS avg_rating,
+                       COALESCE(AVG(r.rating), 0) AS avg_rating,
                        COUNT(r.id) AS review_count
                 FROM products p
                 LEFT JOIN categories c ON c.id = p.category_id
                 LEFT JOIN reviews    r ON r.product_id = p.id
                 WHERE {$whereSQL}
-                GROUP BY p.id
+                GROUP BY p.id, p.name, p.name_ar, p.name_fr, p.description, p.price, p.old_price,
+                         p.image_url, p.sizes, p.created_at,
+                         c.id, c.name, c.name_ar, c.name_fr, c.slug
                 ORDER BY p.created_at DESC
                 LIMIT {$limit} OFFSET {$offset}";
 
@@ -72,13 +74,15 @@ class ProductController {
             "SELECT p.*, p.name_ar, p.name_fr,
                     c.name AS category_name, c.name_ar AS category_name_ar,
                     c.name_fr AS category_name_fr, c.slug AS category_slug,
-                    IFNULL(AVG(r.rating), 0) AS avg_rating,
+                    COALESCE(AVG(r.rating), 0) AS avg_rating,
                     COUNT(r.id) AS review_count
              FROM products p
              LEFT JOIN categories c ON c.id = p.category_id
              LEFT JOIN reviews    r ON r.product_id = p.id
              WHERE p.id = ? AND p.is_active = 1
-             GROUP BY p.id"
+             GROUP BY p.id, p.name, p.name_ar, p.name_fr, p.description, p.price, p.old_price,
+                      p.image_url, p.sizes, p.created_at, p.is_active,
+                      c.id, c.name, c.name_ar, c.name_fr, c.slug"
         );
         $stmt->execute([$id]);
         $product = $stmt->fetch();
