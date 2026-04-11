@@ -9,9 +9,9 @@ $db = db();
 $totalProducts  = $db->query('SELECT COUNT(*) FROM products WHERE is_active=1')->fetchColumn();
 $totalUsers     = $db->query('SELECT COUNT(*) FROM users')->fetchColumn();
 $totalOrders    = $db->query('SELECT COUNT(*) FROM orders')->fetchColumn();
-$revenue        = $db->query("SELECT IFNULL(SUM(total),0) FROM orders WHERE status='Completed'")->fetchColumn();
+$revenue        = $db->query("SELECT COALESCE(SUM(total),0) FROM orders WHERE status='Completed'")->fetchColumn();
 $pendingOrders  = $db->query("SELECT COUNT(*) FROM orders WHERE status IN ('Packing','Picked','In Transit')")->fetchColumn();
-$avgRating      = $db->query('SELECT IFNULL(ROUND(AVG(rating),1),0) FROM reviews')->fetchColumn();
+$avgRating      = $db->query('SELECT COALESCE(ROUND(AVG(rating)::numeric,1),0) FROM reviews')->fetchColumn();
 
 // Recent orders
 $recentOrders = $db->query(
