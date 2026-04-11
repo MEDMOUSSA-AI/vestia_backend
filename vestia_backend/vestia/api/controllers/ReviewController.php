@@ -3,7 +3,6 @@
 // VESTIA API — Review Controller
 // ============================================================
 class ReviewController {
-
     public static function index(string $productId): void {
         $db    = getDB();
         $page  = max(1, (int)($_GET['page']  ?? 1));
@@ -22,11 +21,14 @@ class ReviewController {
         $stmt->execute([$productId]);
         $reviews = $stmt->fetchAll();
 
+        // ✅ COALESCE بدلاً من IFNULL و CAST لـ SUM
         $stats = $db->prepare(
-            'SELECT IFNULL(AVG(rating),0) AS avg, COUNT(*) AS total,
-                    SUM(rating=5) AS s5, SUM(rating=4) AS s4,
-                    SUM(rating=3) AS s3, SUM(rating=2) AS s2,
-                    SUM(rating=1) AS s1
+            'SELECT COALESCE(AVG(rating)::numeric, 0) AS avg, COUNT(*) AS total,
+                    COALESCE(SUM(CASE WHEN rating=5 THEN 1 ELSE 0 END), 0) AS s5,
+                    COALESCE(SUM(CASE WHEN rating=4 THEN 1 ELSE 0 END), 0) AS s4,
+                    COALESCE(SUM(CASE WHEN rating=3 THEN 1 ELSE 0 END), 0) AS s3,
+                    COALESCE(SUM(CASE WHEN rating=2 THEN 1 ELSE 0 END), 0) AS s2,
+                    COALESCE(SUM(CASE WHEN rating=1 THEN 1 ELSE 0 END), 0) AS s1
              FROM reviews WHERE product_id = ?'
         );
         $stats->execute([$productId]);
