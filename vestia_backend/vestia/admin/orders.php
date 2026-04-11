@@ -40,7 +40,8 @@ $offset     = ($page-1)*$limit;
 $where  = ['1=1'];
 $params = [];
 if ($statusFilt) { $where[] = 'o.status=?'; $params[] = $statusFilt; }
-if ($search)     { $where[] = '(u.name LIKE ? OR u.phone LIKE ? OR o.id=?)'; $params[] = "%$search%"; $params[] = "%$search%"; $params[] = (int)$search; }
+// ✅ ILIKE بدلاً من LIKE (PostgreSQL حساس لحالة الأحرف)، وCAST للـ id
+if ($search)     { $where[] = '(u.name ILIKE ? OR u.phone ILIKE ? OR o.id=?)'; $params[] = "%$search%"; $params[] = "%$search%"; $params[] = (int)$search; }
 $whereSQL = implode(' AND ',$where);
 
 $totalStmt = $db->prepare("SELECT COUNT(*) FROM orders o JOIN users u ON u.id=o.user_id WHERE $whereSQL");
@@ -48,6 +49,7 @@ $totalStmt->execute($params);
 $total = (int)$totalStmt->fetchColumn();
 $pages = max(1,(int)ceil($total/$limit));
 
+// ✅ LIMIT و OFFSET كقيم مباشرة (PostgreSQL لا يقبلهما كـ parameters في بعض الإصدارات)
 $stmt = $db->prepare("SELECT o.*,u.name AS user_name,u.phone FROM orders o JOIN users u ON u.id=o.user_id WHERE $whereSQL ORDER BY o.created_at DESC LIMIT $limit OFFSET $offset");
 $stmt->execute($params);
 $orders = $stmt->fetchAll();
@@ -154,7 +156,7 @@ include __DIR__ . '/includes/header.php';
       <tbody>
       <?php foreach ($orders as $o):
         $sc=['Packing'=>'bs-packing','Picked'=>'bs-picked','In Transit'=>'bs-transit','Completed'=>'bs-completed','Cancelled'=>'bs-cancelled'][$o['status']]??'';
-        $itemCount = $db->prepare('SELECT SUM(quantity) FROM order_items WHERE order_id=?');
+        $itemCount = $db->prepare('SELECT COALESCE(SUM(quantity),0) FROM order_items WHERE order_id=?');
         $itemCount->execute([$o['id']]);
         $cnt = (int)$itemCount->fetchColumn();
       ?>
