@@ -2,10 +2,12 @@
 // ============================================================
 // VESTIA ADMIN — Database Connection
 // ============================================================
-define('DB_HOST', 'as0ub2.h.filess.io');
-define('DB_NAME', 'vestia_clearfear');
-define('DB_USER', 'vestia_clearfear');
-define('DB_PASS', 'dbc913cca542b171b1d8130156ff7ea1d1c55d93');
+
+// ✅ Render يوفر هذه المتغيرات تلقائياً عند إنشاء قاعدة بيانات PostgreSQL
+define('DB_HOST', getenv('DB_HOST') ?: 'localhost');
+define('DB_NAME', getenv('DB_NAME') ?: 'vestia_db');
+define('DB_USER', getenv('DB_USER') ?: 'root');
+define('DB_PASS', getenv('DB_PASS') ?: '');
 
 function db(): PDO {
     static $pdo = null;
