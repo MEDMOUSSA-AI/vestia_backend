@@ -3,7 +3,6 @@
 // VESTIA API — Auth Controller
 // ============================================================
 class AuthController {
-
     public static function register(): void {
         $body  = getRequestBody();
         $name  = sanitize($body['name']  ?? '');
@@ -15,7 +14,6 @@ class AuthController {
         if (strlen($name) < 2) $errors['name'] = 'Name must be at least 2 characters.';
         if (!preg_match('/^\+?[0-9]{8,15}$/', $phone)) $errors['phone'] = 'Invalid phone number.';
         if (strlen($pass) < 6) $errors['password'] = 'Password must be at least 6 characters.';
-
         if (!empty($errors)) jsonError('Validation failed', 422, $errors);
 
         $db = getDB();
@@ -27,9 +25,10 @@ class AuthController {
 
         // Insert user
         $hash = password_hash($pass, PASSWORD_BCRYPT, ['cost' => 12]);
-        $stmt = $db->prepare('INSERT INTO users (name, phone, password) VALUES (?, ?, ?)');
+        // ✅ RETURNING id بدلاً من lastInsertId() (PostgreSQL لا يدعمها بشكل موثوق)
+        $stmt = $db->prepare('INSERT INTO users (name, phone, password) VALUES (?, ?, ?) RETURNING id');
         $stmt->execute([$name, $phone, $hash]);
-        $userId = (int)$db->lastInsertId();
+        $userId = (int)$stmt->fetchColumn();
 
         // Create token
         $token  = generateToken();
@@ -58,7 +57,6 @@ class AuthController {
         if (!$user || !password_verify($pass, $user['password'])) {
             jsonError('Invalid phone number or password', 401);
         }
-
         if (!$user['is_active']) jsonError('Account is suspended', 403);
 
         // Create token
