@@ -109,11 +109,12 @@ class OrderController {
 
         $db->beginTransaction();
         try {
-            $db->prepare(
-                'INSERT INTO orders (user_id, status, subtotal, shipping_fee, vat, total) VALUES (?,?,?,?,?,?)'
-            )->execute([$user['id'], 'Packing', $subtotal, $shippingFee, 0, $total]);
-
-            $orderId = (int)$db->lastInsertId();
+            // ✅ RETURNING id بدلاً من lastInsertId()
+            $insertStmt = $db->prepare(
+                'INSERT INTO orders (user_id, status, subtotal, shipping_fee, vat, total) VALUES (?,?,?,?,?,?) RETURNING id'
+            );
+            $insertStmt->execute([$user['id'], 'Packing', $subtotal, $shippingFee, 0, $total]);
+            $orderId = (int)$insertStmt->fetchColumn();
 
             $insertItem = $db->prepare(
                 'INSERT INTO order_items (order_id, product_id, name, image_url, price, quantity, size) VALUES (?,?,?,?,?,?,?)'
