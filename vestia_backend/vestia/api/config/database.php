@@ -16,6 +16,7 @@ define('TOKEN_EXPIRY', 30 * 24 * 60 * 60);
 // Shipping fee
 define('SHIPPING_FEE', 80.00);
 
+define('REPLICATE_API_TOKEN', 'r8_xxxxxxxxxxxxxxxx');
 function getDB(): PDO {
     static $pdo = null;
     if ($pdo === null) {
