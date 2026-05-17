@@ -6,10 +6,10 @@ error_reporting(0);
 ini_set('display_errors', 0);
 
 // ✅ Render يوفر هذه المتغيرات تلقائياً عند إنشاء قاعدة بيانات PostgreSQL
-define('DB_HOST', getenv('DB_HOST') ?: 'localhost');
-define('DB_NAME', getenv('DB_NAME') ?: 'vestia_db');
-define('DB_USER', getenv('DB_USER') ?: 'root');
-define('DB_PASS', getenv('DB_PASS') ?: '');
+define('DB_HOST', getenv('DB_HOST') ?: 'dpg-d84grr3tqb8s73fcadn0-a.frankfurt-postgres.render.com');
+define('DB_NAME', getenv('DB_NAME') ?: 'my_fashion_db_dpp9');
+define('DB_USER', getenv('DB_USER') ?: 'my_fashion_db_dpp9_user');
+define('DB_PASS', getenv('DB_PASS') ?: 'BI7j11oBO6Mvw5vFXxzFOtTnBReLcNgn');
 
 // Token expiry in seconds (30 days)
 define('TOKEN_EXPIRY', 30 * 24 * 60 * 60);
