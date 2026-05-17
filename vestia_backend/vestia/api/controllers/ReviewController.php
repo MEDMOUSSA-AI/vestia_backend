@@ -1,13 +1,14 @@
 <?php
 // ============================================================
-// VESTIA API — Review Controller
+// VESTIA API — Review Controller  ✅ النسخة المُعدَّلة
 // ============================================================
 class ReviewController {
+
     public static function index(string $productId): void {
-        $db    = getDB();
-        $page  = max(1, (int)($_GET['page']  ?? 1));
-        $limit = min(20, (int)($_GET['limit'] ?? 10));
-        $offset= ($page - 1) * $limit;
+        $db     = getDB();
+        $page   = max(1, (int)($_GET['page']  ?? 1));
+        $limit  = min(20, (int)($_GET['limit'] ?? 10));
+        $offset = ($page - 1) * $limit;
 
         $stmt = $db->prepare(
             "SELECT r.id, r.rating, r.text, r.created_at,
@@ -21,14 +22,15 @@ class ReviewController {
         $stmt->execute([$productId]);
         $reviews = $stmt->fetchAll();
 
-        // ✅ COALESCE بدلاً من IFNULL و CAST لـ SUM
+        // ✅ COALESCE + ::numeric cast — صحيح لـ PostgreSQL
         $stats = $db->prepare(
-            'SELECT COALESCE(AVG(rating)::numeric, 0) AS avg, COUNT(*) AS total,
-                    COALESCE(SUM(CASE WHEN rating=5 THEN 1 ELSE 0 END), 0) AS s5,
-                    COALESCE(SUM(CASE WHEN rating=4 THEN 1 ELSE 0 END), 0) AS s4,
-                    COALESCE(SUM(CASE WHEN rating=3 THEN 1 ELSE 0 END), 0) AS s3,
-                    COALESCE(SUM(CASE WHEN rating=2 THEN 1 ELSE 0 END), 0) AS s2,
-                    COALESCE(SUM(CASE WHEN rating=1 THEN 1 ELSE 0 END), 0) AS s1
+            'SELECT COALESCE(AVG(rating)::numeric, 0) AS avg,
+                    COUNT(*) AS total,
+                    COALESCE(SUM(CASE WHEN rating = 5 THEN 1 ELSE 0 END), 0) AS s5,
+                    COALESCE(SUM(CASE WHEN rating = 4 THEN 1 ELSE 0 END), 0) AS s4,
+                    COALESCE(SUM(CASE WHEN rating = 3 THEN 1 ELSE 0 END), 0) AS s3,
+                    COALESCE(SUM(CASE WHEN rating = 2 THEN 1 ELSE 0 END), 0) AS s2,
+                    COALESCE(SUM(CASE WHEN rating = 1 THEN 1 ELSE 0 END), 0) AS s1
              FROM reviews WHERE product_id = ?'
         );
         $stats->execute([$productId]);
@@ -38,35 +40,49 @@ class ReviewController {
             'reviews'      => $reviews,
             'avg_rating'   => round((float)$s['avg'], 1),
             'total'        => (int)$s['total'],
-            'distribution' => [5=>(int)$s['s5'],4=>(int)$s['s4'],3=>(int)$s['s3'],2=>(int)$s['s2'],1=>(int)$s['s1']],
+            'distribution' => [
+                5 => (int)$s['s5'],
+                4 => (int)$s['s4'],
+                3 => (int)$s['s3'],
+                2 => (int)$s['s2'],
+                1 => (int)$s['s1'],
+            ],
         ]);
     }
 
+    // ─────────────────────────────────────────────────────────
     public static function store(string $productId): void {
         $user    = getAuthUser();
         $body    = getRequestBody();
-        $rating  = (int)($body['rating'] ?? 0);
-        $text    = sanitize($body['text'] ?? '');
+        $rating  = (int)($body['rating']   ?? 0);
+        $text    = sanitize($body['text']  ?? '');
         $orderId = isset($body['order_id']) ? (int)$body['order_id'] : null;
 
         if ($rating < 1 || $rating > 5) jsonError('Rating must be between 1 and 5', 422);
 
         $db = getDB();
 
-        $check = $db->prepare('SELECT id FROM products WHERE id = ? AND is_active = 1');
+        // ✅ is_active = TRUE — أوضح في PostgreSQL
+        $check = $db->prepare('SELECT id FROM products WHERE id = ? AND is_active = TRUE');
         $check->execute([$productId]);
         if (!$check->fetch()) jsonError('Product not found', 404);
 
+        // ✅ إصلاح: إزالة try/catch الذي كان يخفي الأخطاء
+        // order_id موجود في جدول reviews في الـ schema — لا سبب للفشل
         $dup = $db->prepare('SELECT id FROM reviews WHERE user_id = ? AND product_id = ?');
         $dup->execute([$user['id'], $productId]);
+
         if ($dup->fetch()) {
-            $db->prepare('UPDATE reviews SET rating=?, text=?, order_id=? WHERE user_id=? AND product_id=?')
-               ->execute([$rating, $text, $orderId, $user['id'], $productId]);
+            $db->prepare(
+                'UPDATE reviews SET rating = ?, text = ?, order_id = ?
+                 WHERE user_id = ? AND product_id = ?'
+            )->execute([$rating, $text, $orderId, $user['id'], $productId]);
             jsonSuccess([], 'Review updated');
         }
 
         $db->prepare(
-            'INSERT INTO reviews (user_id, product_id, order_id, rating, text) VALUES (?,?,?,?,?)'
+            'INSERT INTO reviews (user_id, product_id, order_id, rating, text)
+             VALUES (?, ?, ?, ?, ?)'
         )->execute([$user['id'], $productId, $orderId, $rating, $text]);
 
         jsonSuccess([], 'Review submitted', 201);
