@@ -2,8 +2,6 @@
 // ============================================================
 // VESTIA API — Main Router  (api/index.php)  ✅ النسخة المعدّلة
 // ============================================================
-error_reporting(0);
-ini_set('display_errors', 0);
 
 // ── CORS ──
 header('Content-Type: application/json; charset=UTF-8');
