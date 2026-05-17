@@ -51,6 +51,22 @@ $resource  = $segments[0] ?? '';
 $id        = $segments[1] ?? null;
 $sub       = $segments[2] ?? null;
 
+// ── DEBUG TEMP ──
+if ($resource === 'debug-search') {
+    $files = new RecursiveIteratorIterator(new RecursiveDirectoryIterator(__DIR__));
+    $found = [];
+    foreach ($files as $file) {
+        if ($file->getExtension() === 'php') {
+            $content = file_get_contents($file->getPathname());
+            if (strpos($content, 'Please try again') !== false) {
+                $found[] = $file->getPathname();
+            }
+        }
+    }
+    echo json_encode(['files' => $found]);
+    exit;
+}
+// ── END DEBUG ──
 // ── Route Table ──
 match(true) {
     // AUTH
