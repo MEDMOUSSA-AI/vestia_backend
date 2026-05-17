@@ -1,6 +1,6 @@
 <?php
 // ============================================================
-// VESTIA API — Order Controller  ✅ النسخة المُعدَّلة
+// VESTIA API — Order Controller  ✅ النسخة المُصلَّحة نهائياً
 // ============================================================
 class OrderController {
 
@@ -9,14 +9,11 @@ class OrderController {
         $db     = getDB();
         $status = $_GET['status'] ?? null;
 
-        // ── بناء شرط الفلترة ──────────────────────────────────
         $where  = ['o.user_id = ?'];
         $params = [$user['id']];
 
         if ($status === 'ongoing') {
-            // ✅ إصلاح: استخدام = ANY() بدلاً من IN مع string مباشر
-            $where[]  = "o.status = ANY(?)";
-            $params[] = '{Packing,Picked,In Transit}';
+            $where[]  = "o.status IN ('Packing', 'Picked', 'In Transit')";
         } elseif ($status === 'completed') {
             $where[]  = "o.status = ?";
             $params[] = 'Completed';
@@ -24,7 +21,6 @@ class OrderController {
 
         $whereSQL = implode(' AND ', $where);
 
-        // ✅ إصلاح: استبدال N+1 queries بـ JOIN واحد شامل
         $stmt = $db->prepare(
             "SELECT
                 o.id        AS order_id,
@@ -56,11 +52,9 @@ class OrderController {
              ORDER BY o.created_at DESC, oi.id ASC"
         );
 
-        // ✅ user_id مرّة ثانية لشرط JOIN
         $stmt->execute(array_merge([$user['id']], $params));
         $rows = $stmt->fetchAll();
 
-        // ── تجميع النتائج في هيكل منظّم ──────────────────────
         $ordersMap = [];
         foreach ($rows as $row) {
             $oid = $row['order_id'];
@@ -124,22 +118,35 @@ class OrderController {
         $user = getAuthUser();
         $db   = getDB();
 
+        error_log('📦 store() - user_id: ' . $user['id']);
+
+        // ✅ قراءة العربة من قاعدة البيانات مباشرة (بدون is_active لتفادي خطأ العمود)
         $stmt = $db->prepare(
-            "SELECT c.quantity, c.size, p.id AS product_id, p.name, p.price, p.image_url
+            "SELECT c.id, c.quantity, c.size,
+                    p.id AS product_id, p.name, p.price, p.image_url
              FROM cart_items c
              JOIN products p ON p.id = c.product_id
-             WHERE c.user_id = ? AND p.is_active = 1"
+             WHERE c.user_id = ?"
         );
         $stmt->execute([$user['id']]);
         $cartItems = $stmt->fetchAll();
 
+        error_log('🛒 cart items count: ' . count($cartItems));
+
         if (empty($cartItems)) {
+            error_log('❌ Cart is empty for user: ' . $user['id']);
             jsonError('Cart is empty', 422);
+            return;
         }
 
         $shippingFee = defined('SHIPPING_FEE') ? (float)SHIPPING_FEE : 80.0;
-        $subtotal    = array_sum(array_map(fn($i) => $i['price'] * $i['quantity'], $cartItems));
-        $total       = $subtotal + $shippingFee;
+        $subtotal    = 0;
+        foreach ($cartItems as $item) {
+            $subtotal += (float)$item['price'] * (int)$item['quantity'];
+        }
+        $total = $subtotal + $shippingFee;
+
+        error_log("💰 subtotal=$subtotal shipping=$shippingFee total=$total");
 
         $db->beginTransaction();
         try {
@@ -157,18 +164,22 @@ class OrderController {
                 $total,
             ]);
 
-            // ✅ إصلاح: التحقق من false قبل الـ cast
-            $raw = $insertStmt->fetchColumn();
-            if (!$raw) {
+            $orderId = $insertStmt->fetchColumn();
+            error_log('🆔 raw orderId: ' . var_export($orderId, true));
+
+            if ($orderId === false || $orderId === null || $orderId == 0) {
                 throw new \RuntimeException('Failed to retrieve order ID after insert');
             }
-            $orderId = (int)$raw;
+            $orderId = (int)$orderId;
 
             $insertItem = $db->prepare(
                 'INSERT INTO order_items (order_id, product_id, name, image_url, price, quantity, size)
                  VALUES (?, ?, ?, ?, ?, ?, ?)'
             );
+
             foreach ($cartItems as $item) {
+                $size = !empty($item['size']) ? $item['size'] : 'M';
+                error_log('📝 inserting item: ' . $item['name'] . ' size=' . $size);
                 $insertItem->execute([
                     $orderId,
                     $item['product_id'],
@@ -176,17 +187,21 @@ class OrderController {
                     $item['image_url'],
                     $item['price'],
                     $item['quantity'],
-                    $item['size'],
+                    $size,
                 ]);
             }
 
-            $db->prepare('DELETE FROM cart_items WHERE user_id = ?')->execute([$user['id']]);
+            // ✅ حذف العربة بعد إتمام الطلب
+            $db->prepare('DELETE FROM cart_items WHERE user_id = ?')
+               ->execute([$user['id']]);
 
             $db->commit();
+            error_log('✅ Order placed successfully: ' . $orderId);
             jsonSuccess(['order_id' => $orderId], 'Order placed successfully', 201);
 
         } catch (\Throwable $e) {
             $db->rollBack();
+            error_log('❌ store() error: ' . $e->getMessage() . ' | Trace: ' . $e->getTraceAsString());
             jsonError('Failed to place order: ' . $e->getMessage(), 500);
         }
     }
