@@ -133,7 +133,7 @@ class OrderController {
 
         } catch (Exception $e) {
             $db->rollBack();
-            jsonError('Failed to place order. Please try again.', 500);
+           jsonError($e->getMessage(), 500);
         }
     }
 }
