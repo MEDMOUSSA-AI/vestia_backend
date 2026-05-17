@@ -5,6 +5,9 @@
 class OrderController {
 
     public static function index(): void {
+        ini_set('display_errors', 1);   // ← أضف هذا
+        error_reporting(E_ALL);          // ← وهذا
+        
         $user   = getAuthUser();
         $db     = getDB();
         $status = $_GET['status'] ?? null;
