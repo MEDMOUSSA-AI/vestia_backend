@@ -1,6 +1,6 @@
 <?php
 // ============================================================
-// VESTIA API — Product Controller
+// VESTIA API — Product Controller  ✅ النسخة المُعدَّلة
 // ============================================================
 class ProductController {
 
@@ -8,13 +8,14 @@ class ProductController {
         $db = getDB();
 
         $categoryId = isset($_GET['category_id']) ? (int)$_GET['category_id'] : null;
-        $search     = $_GET['search']   ?? null;
-        $lang       = $_GET['lang']     ?? 'en'; // ✅ إصلاح 4 — دعم اللغة
+        $search     = $_GET['search'] ?? null;
+        $lang       = $_GET['lang']   ?? 'en';
         $page       = max(1, (int)($_GET['page']  ?? 1));
         $limit      = min(50, max(1, (int)($_GET['limit'] ?? 20)));
         $offset     = ($page - 1) * $limit;
 
-        $where  = ['p.is_active = 1'];
+        // ✅ is_active = TRUE — أوضح في PostgreSQL
+        $where  = ['p.is_active = TRUE'];
         $params = [];
 
         if ($categoryId) {
@@ -23,13 +24,13 @@ class ProductController {
         }
 
         if ($search) {
+            // ✅ ILIKE — صحيح لـ PostgreSQL (غير موجود في MySQL)
             $where[]  = 'p.name ILIKE ?';
             $params[] = '%' . $search . '%';
         }
 
         $whereSQL = implode(' AND ', $where);
 
-        // ✅ إصلاح 4 — إضافة name_ar و name_fr للمنتجات والفئات
         $sql = "SELECT p.id, p.name, p.name_ar, p.name_fr, p.description, p.price, p.old_price,
                        p.image_url, p.sizes, p.created_at,
                        c.id AS category_id, c.name AS category_name,
@@ -51,8 +52,8 @@ class ProductController {
         $stmt->execute($params);
         $products = $stmt->fetchAll();
 
-        // Total count
-        $countSql  = "SELECT COUNT(*) FROM products p LEFT JOIN categories c ON c.id = p.category_id WHERE {$whereSQL}";
+        // إجمالي عدد المنتجات للـ pagination
+        $countSql  = "SELECT COUNT(*) FROM products p WHERE {$whereSQL}";
         $countStmt = $db->prepare($countSql);
         $countStmt->execute($params);
         $total = (int)$countStmt->fetchColumn();
@@ -66,9 +67,10 @@ class ProductController {
         ]);
     }
 
+    // ─────────────────────────────────────────────────────────
     public static function show(string $id): void {
         $db   = getDB();
-        $lang = $_GET['lang'] ?? 'en'; // ✅ إصلاح 4 — دعم اللغة
+        $lang = $_GET['lang'] ?? 'en';
 
         $stmt = $db->prepare(
             "SELECT p.*, p.name_ar, p.name_fr,
@@ -79,7 +81,7 @@ class ProductController {
              FROM products p
              LEFT JOIN categories c ON c.id = p.category_id
              LEFT JOIN reviews    r ON r.product_id = p.id
-             WHERE p.id = ? AND p.is_active = 1
+             WHERE p.id = ? AND p.is_active = TRUE
              GROUP BY p.id, p.name, p.name_ar, p.name_fr, p.description, p.price, p.old_price,
                       p.image_url, p.sizes, p.created_at, p.is_active,
                       c.id, c.name, c.name_ar, c.name_fr, c.slug"
@@ -92,24 +94,24 @@ class ProductController {
         jsonSuccess(['product' => self::format($product, $lang)]);
     }
 
-    // ✅ إصلاح 3 + إصلاح 4 — format() محدّث بالكامل
+    // ─────────────────────────────────────────────────────────
     private static function format(array $p, string $lang = 'en'): array {
         $discount = null;
         if ($p['old_price'] && $p['old_price'] > $p['price']) {
             $discount = round((($p['old_price'] - $p['price']) / $p['old_price']) * 100);
         }
 
-        // ✅ إصلاح 3 — تحويل المسار المحلي إلى رابط كامل
+        // ✅ استخدام fixImageUrl() المركزية
         $imageUrl = fixImageUrl($p['image_url']);
 
-        // ✅ إصلاح 4 — اسم المنتج حسب اللغة
+        // اسم المنتج حسب اللغة مع fallback للإنجليزية
         $localizedName = match($lang) {
             'ar'    => $p['name_ar'] ?: $p['name'],
             'fr'    => $p['name_fr'] ?: $p['name'],
             default => $p['name'],
         };
 
-        // ✅ إصلاح 4 — اسم الفئة حسب اللغة
+        // اسم الفئة حسب اللغة مع fallback للإنجليزية
         $localizedCategory = isset($p['category_id']) ? [
             'id'   => (int)$p['category_id'],
             'name' => match($lang) {
