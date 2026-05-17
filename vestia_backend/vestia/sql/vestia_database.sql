@@ -3,9 +3,6 @@
 -- Compatible with PostgreSQL 12+
 -- ============================================================
 
--- Create database (uncomment if running standalone)
--- CREATE DATABASE vestia_db;
-
 -- ──────────────────────────────────────────────
 -- ADMINS
 -- ──────────────────────────────────────────────
@@ -35,7 +32,6 @@ CREATE TABLE users (
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Trigger to update updated_at automatically
 CREATE OR REPLACE FUNCTION update_users_timestamp()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -48,7 +44,7 @@ CREATE TRIGGER users_updated_at BEFORE UPDATE ON users
 FOR EACH ROW EXECUTE FUNCTION update_users_timestamp();
 
 -- ──────────────────────────────────────────────
--- AUTH TOKENS (simple token table — no JWT lib needed)
+-- AUTH TOKENS
 -- ──────────────────────────────────────────────
 CREATE TABLE auth_tokens (
   id         SERIAL PRIMARY KEY,
@@ -99,7 +95,6 @@ CREATE TABLE products (
   FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE SET NULL
 );
 
--- Trigger to update updated_at automatically
 CREATE OR REPLACE FUNCTION update_products_timestamp()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -150,7 +145,6 @@ CREATE TABLE cart_items (
   FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
 );
 
--- Trigger to update updated_at automatically
 CREATE OR REPLACE FUNCTION update_cart_items_timestamp()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -181,7 +175,6 @@ CREATE TABLE orders (
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
--- Trigger to update updated_at automatically
 CREATE OR REPLACE FUNCTION update_orders_timestamp()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -226,22 +219,9 @@ CREATE TABLE reviews (
   FOREIGN KEY (order_id)   REFERENCES orders(id)   ON DELETE SET NULL
 );
 
--- Sample reviews
-INSERT INTO reviews (user_id, product_id, order_id, rating, text) VALUES
-(1, 1, NULL, 5, 'The item is very good, I like it very much.'),
-(1, 2, NULL, 4, 'The seller is very fast in sending packet, arrived in just 1 day!'),
-(1, 3, NULL, 4, 'Really good quality! I highly recommend it!');
-
 -- ──────────────────────────────────────────────
--- Sequence reset (optional, for auto-increment IDs)
+-- Sequence reset
 -- ──────────────────────────────────────────────
 SELECT setval('admins_id_seq', (SELECT MAX(id) FROM admins) + 1);
-SELECT setval('users_id_seq', 1);
-SELECT setval('auth_tokens_id_seq', 1);
 SELECT setval('categories_id_seq', (SELECT MAX(id) FROM categories) + 1);
 SELECT setval('products_id_seq', (SELECT MAX(id) FROM products) + 1);
-SELECT setval('saved_items_id_seq', 1);
-SELECT setval('cart_items_id_seq', 1);
-SELECT setval('orders_id_seq', 1);
-SELECT setval('order_items_id_seq', 1);
-SELECT setval('reviews_id_seq', (SELECT MAX(id) FROM reviews) + 1);
