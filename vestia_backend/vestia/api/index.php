@@ -28,7 +28,7 @@ require_once __DIR__ . '/controllers/SavedController.php';
 require_once __DIR__ . '/controllers/OrderController.php';
 require_once __DIR__ . '/controllers/ReviewController.php';
 require_once __DIR__ . '/controllers/ProfileController.php';
-require_once __DIR__ . '/controllers/TryOnController.php'; // ✅ أُضيف
+require_once __DIR__ . '/controllers/TryOnController.php';
 
 set_exception_handler(function(\Throwable $e) {
     http_response_code(500);
@@ -53,20 +53,27 @@ $sub       = $segments[2] ?? null;
 
 // ── DEBUG TEMP ──
 if ($resource === 'debug-search') {
-    $files = new RecursiveIteratorIterator(new RecursiveDirectoryIterator(__DIR__));
     $found = [];
-    foreach ($files as $file) {
-        if ($file->getExtension() === 'php') {
-            $content = file_get_contents($file->getPathname());
-            if (strpos($content, 'Please try again') !== false) {
-                $found[] = $file->getPathname();
+    try {
+        $files = new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator(__DIR__, RecursiveDirectoryIterator::SKIP_DOTS)
+        );
+        foreach ($files as $file) {
+            if ($file->getExtension() === 'php') {
+                $content = @file_get_contents($file->getPathname());
+                if ($content && strpos($content, 'Please try again') !== false) {
+                    $found[] = $file->getPathname();
+                }
             }
         }
+    } catch (\Throwable $e) {
+        $found[] = 'ERROR: ' . $e->getMessage();
     }
-    echo json_encode(['files' => $found]);
+    echo json_encode(['files' => $found, 'dir' => __DIR__]);
     exit;
 }
 // ── END DEBUG ──
+
 // ── Route Table ──
 match(true) {
     // AUTH
@@ -104,7 +111,7 @@ match(true) {
     $resource === 'profile' && $method === 'GET' => ProfileController::show(),
     $resource === 'profile' && $method === 'PUT' => ProfileController::update(),
 
-    // ✅ VIRTUAL TRY-ON
+    // VIRTUAL TRY-ON
     $resource === 'virtual-tryon' && $method === 'POST' => TryOnController::generate(),
 
     // 404
