@@ -1,16 +1,15 @@
 <?php
 // ============================================================
-// VESTIA API — Cart Controller
+// VESTIA API — Cart Controller  ✅ النسخة المُعدَّلة
 // ============================================================
 class CartController {
 
     /**
-     * Helper method to get formatted cart items
-     * Fixes image URLs and returns cart summary
+     * جلب بيانات السلّة مع تصحيح روابط الصور والإجماليات
      */
     private static function getCartData($userId): array {
         $db = getDB();
-        
+
         $stmt = $db->prepare(
             "SELECT c.id, c.quantity, c.size,
                     p.id AS product_id, p.name, p.price, p.old_price, p.image_url
@@ -22,19 +21,14 @@ class CartController {
         $stmt->execute([$userId]);
         $items = $stmt->fetchAll();
 
-        // ✅ FIX IMAGE URLs
-        $items = array_map(function($item) {
-            $imageUrl = $item['image_url'];
-            if ($imageUrl && strpos($imageUrl, 'http') !== 0 && strpos($imageUrl, '/') === 0) {
-                $protocol = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http';
-                $host = $_SERVER['HTTP_HOST'];
-                $item['image_url'] = "{$protocol}://{$host}{$imageUrl}";
-            }
+        // ✅ تصحيح روابط الصور المحلية إلى روابط كاملة
+        $items = array_map(function ($item) {
+            $item['image_url'] = fixImageUrl($item['image_url']);
             return $item;
         }, $items);
 
         $subtotal    = array_sum(array_map(fn($i) => $i['price'] * $i['quantity'], $items));
-        $shippingFee = count($items) > 0 ? SHIPPING_FEE : 0;
+        $shippingFee = count($items) > 0 ? (defined('SHIPPING_FEE') ? (float)SHIPPING_FEE : 80.0) : 0;
 
         return [
             'items'        => $items,
@@ -46,11 +40,13 @@ class CartController {
         ];
     }
 
+    // ─────────────────────────────────────────────────────────
     public static function index(): void {
         $user = getAuthUser();
         jsonSuccess(self::getCartData($user['id']));
     }
 
+    // ─────────────────────────────────────────────────────────
     public static function add(): void {
         $user = getAuthUser();
         $body = getRequestBody();
@@ -63,12 +59,12 @@ class CartController {
 
         $db = getDB();
 
-        $check = $db->prepare('SELECT id FROM products WHERE id = ? AND is_active = 1');
+        // ✅ إصلاح: is_active = TRUE أوضح في PostgreSQL
+        $check = $db->prepare('SELECT id FROM products WHERE id = ? AND is_active = TRUE');
         $check->execute([$productId]);
         if (!$check->fetch()) jsonError('Product not found', 404);
 
-        // ✅ ON CONFLICT بدلاً من ON DUPLICATE KEY UPDATE (PostgreSQL)
-        // يتطلب وجود UNIQUE constraint على (user_id, product_id, size) في جدول cart_items
+        // ✅ ON CONFLICT — صحيح مع PostgreSQL + UNIQUE(user_id, product_id, size)
         $db->prepare(
             "INSERT INTO cart_items (user_id, product_id, quantity, size)
              VALUES (?, ?, ?, ?)
@@ -76,11 +72,10 @@ class CartController {
              DO UPDATE SET quantity = cart_items.quantity + EXCLUDED.quantity"
         )->execute([$user['id'], $productId, $quantity, $size]);
 
-        // ✅ RETURN UPDATED CART IMMEDIATELY - no need to refresh
-        $cartData = self::getCartData($user['id']);
-        jsonSuccess($cartData, 'Added to cart', 201);
+        jsonSuccess(self::getCartData($user['id']), 'Added to cart', 201);
     }
 
+    // ─────────────────────────────────────────────────────────
     public static function update(?string $id): void {
         $user = getAuthUser();
         if (!$id) jsonError('Cart item ID required', 422);
@@ -97,11 +92,10 @@ class CartController {
                ->execute([$quantity, $id, $user['id']]);
         }
 
-        // ✅ RETURN UPDATED CART
-        $cartData = self::getCartData($user['id']);
-        jsonSuccess($cartData, $quantity <= 0 ? 'Item removed' : 'Cart updated');
+        jsonSuccess(self::getCartData($user['id']), $quantity <= 0 ? 'Item removed' : 'Cart updated');
     }
 
+    // ─────────────────────────────────────────────────────────
     public static function remove(?string $id): void {
         $user = getAuthUser();
         if (!$id) jsonError('Cart item ID required', 422);
@@ -110,8 +104,6 @@ class CartController {
         $db->prepare('DELETE FROM cart_items WHERE id = ? AND user_id = ?')
            ->execute([$id, $user['id']]);
 
-        // ✅ RETURN UPDATED CART
-        $cartData = self::getCartData($user['id']);
-        jsonSuccess($cartData, 'Item removed from cart');
+        jsonSuccess(self::getCartData($user['id']), 'Item removed from cart');
     }
 }
