@@ -2,7 +2,8 @@
 // ============================================================
 // VESTIA API — Main Router  (api/index.php)  ✅ النسخة المعدّلة
 // ============================================================
-
+error_reporting(E_ALL);
+ini_set('display_errors', 1);
 // ── CORS ──
 header('Content-Type: application/json; charset=UTF-8');
 header('Access-Control-Allow-Origin: *');
@@ -28,6 +29,17 @@ require_once __DIR__ . '/controllers/OrderController.php';
 require_once __DIR__ . '/controllers/ReviewController.php';
 require_once __DIR__ . '/controllers/ProfileController.php';
 require_once __DIR__ . '/controllers/TryOnController.php'; // ✅ أُضيف
+
+set_exception_handler(function(\Throwable $e) {
+    http_response_code(500);
+    echo json_encode([
+        'success' => false,
+        'message' => $e->getMessage(),
+        'file'    => $e->getFile(),
+        'line'    => $e->getLine(),
+    ]);
+    exit;
+});
 
 // ── Route Parsing ──
 $method    = $_SERVER['REQUEST_METHOD'];
