@@ -1,71 +1,102 @@
 <?php
 // ============================================================
-// VESTIA API — Order Controller
+// VESTIA API — Order Controller  ✅ النسخة المُعدَّلة
 // ============================================================
 class OrderController {
 
     public static function index(): void {
-        ini_set('display_errors', 1);   // ← أضف هذا
-        error_reporting(E_ALL);          // ← وهذا
-        
         $user   = getAuthUser();
         $db     = getDB();
         $status = $_GET['status'] ?? null;
 
+        // ── بناء شرط الفلترة ──────────────────────────────────
         $where  = ['o.user_id = ?'];
         $params = [$user['id']];
 
         if ($status === 'ongoing') {
-            $where[] = "o.status IN ('Packing','Picked','In Transit')";
+            // ✅ إصلاح: استخدام = ANY() بدلاً من IN مع string مباشر
+            $where[]  = "o.status = ANY(?)";
+            $params[] = '{Packing,Picked,In Transit}';
         } elseif ($status === 'completed') {
-            $where[] = "o.status = 'Completed'";
+            $where[]  = "o.status = ?";
+            $params[] = 'Completed';
         }
 
         $whereSQL = implode(' AND ', $where);
 
+        // ✅ إصلاح: استبدال N+1 queries بـ JOIN واحد شامل
         $stmt = $db->prepare(
-            "SELECT o.id, o.status, o.subtotal, o.shipping_fee, o.vat, o.total, o.created_at
+            "SELECT
+                o.id        AS order_id,
+                o.status,
+                o.subtotal,
+                o.shipping_fee,
+                o.vat,
+                o.total,
+                o.created_at,
+
+                oi.id         AS item_id,
+                oi.name       AS item_name,
+                oi.image_url  AS item_image_url,
+                oi.price      AS item_price,
+                oi.quantity   AS item_quantity,
+                oi.size       AS item_size,
+                oi.product_id AS item_product_id,
+
+                r.id     AS review_id,
+                r.rating AS review_rating
+
              FROM orders o
+             LEFT JOIN order_items oi ON oi.order_id = o.id
+             LEFT JOIN reviews r
+                    ON r.product_id = oi.product_id
+                   AND r.user_id    = ?
+                   AND r.order_id   = o.id
              WHERE {$whereSQL}
-             ORDER BY o.created_at DESC"
+             ORDER BY o.created_at DESC, oi.id ASC"
         );
-        $stmt->execute($params);
-        $orders = $stmt->fetchAll();
 
-        foreach ($orders as &$order) {
-            $items = $db->prepare(
-                'SELECT oi.id, oi.name, oi.image_url, oi.price, oi.quantity, oi.size, oi.product_id
-                 FROM order_items oi WHERE oi.order_id = ?'
-            );
-            $items->execute([$order['id']]);
-            $order['items'] = $items->fetchAll();
+        // ✅ user_id مرّة ثانية لشرط JOIN
+        $stmt->execute(array_merge([$user['id']], $params));
+        $rows = $stmt->fetchAll();
 
-            foreach ($order['items'] as &$item) {
-                $item['image_url'] = fixImageUrl($item['image_url']);
+        // ── تجميع النتائج في هيكل منظّم ──────────────────────
+        $ordersMap = [];
+        foreach ($rows as $row) {
+            $oid = $row['order_id'];
 
-                try {
-                    $rev = $db->prepare(
-                        'SELECT id, rating FROM reviews
-                         WHERE user_id = ? AND product_id = ? AND order_id = ?'
-                    );
-                    $rev->execute([$user['id'], $item['product_id'], $order['id']]);
-                } catch (\Throwable $e) {
-                    $rev = $db->prepare(
-                        'SELECT id, rating FROM reviews
-                         WHERE user_id = ? AND product_id = ?'
-                    );
-                    $rev->execute([$user['id'], $item['product_id']]);
-                }
+            if (!isset($ordersMap[$oid])) {
+                $ordersMap[$oid] = [
+                    'id'           => (int)$oid,
+                    'status'       => $row['status'],
+                    'subtotal'     => (float)$row['subtotal'],
+                    'shipping_fee' => (float)$row['shipping_fee'],
+                    'vat'          => (float)$row['vat'],
+                    'total'        => (float)$row['total'],
+                    'created_at'   => $row['created_at'],
+                    'items'        => [],
+                ];
+            }
 
-                $review = $rev->fetch();
-                $item['reviewed'] = (bool)$review;
-                $item['rating']   = $review ? (float)$review['rating'] : null;
+            if ($row['item_id'] !== null) {
+                $ordersMap[$oid]['items'][] = [
+                    'id'         => (int)$row['item_id'],
+                    'name'       => $row['item_name'],
+                    'image_url'  => fixImageUrl($row['item_image_url']),
+                    'price'      => (float)$row['item_price'],
+                    'quantity'   => (int)$row['item_quantity'],
+                    'size'       => $row['item_size'],
+                    'product_id' => $row['item_product_id'] ? (int)$row['item_product_id'] : null,
+                    'reviewed'   => $row['review_id'] !== null,
+                    'rating'     => $row['review_rating'] ? (float)$row['review_rating'] : null,
+                ];
             }
         }
 
-        jsonSuccess(['orders' => $orders]);
+        jsonSuccess(['orders' => array_values($ordersMap)]);
     }
 
+    // ─────────────────────────────────────────────────────────
     public static function show(string $id): void {
         $user = getAuthUser();
         $db   = getDB();
@@ -88,6 +119,7 @@ class OrderController {
         jsonSuccess(['order' => $order]);
     }
 
+    // ─────────────────────────────────────────────────────────
     public static function store(): void {
         $user = getAuthUser();
         $db   = getDB();
@@ -105,15 +137,13 @@ class OrderController {
             jsonError('Cart is empty', 422);
         }
 
-        // ✅ إصلاح: SHIPPING_FEE قد يكون غير معرّف → يُطلق Error في PHP 8
-        // catch (Exception) لا يصيده، لذا نضع fallback آمن
         $shippingFee = defined('SHIPPING_FEE') ? (float)SHIPPING_FEE : 80.0;
         $subtotal    = array_sum(array_map(fn($i) => $i['price'] * $i['quantity'], $cartItems));
         $total       = $subtotal + $shippingFee;
 
         $db->beginTransaction();
         try {
-            // ✅ RETURNING id صحيح مع PostgreSQL
+            // ✅ RETURNING id — صحيح مع PostgreSQL
             $insertStmt = $db->prepare(
                 'INSERT INTO orders (user_id, status, subtotal, shipping_fee, vat, total)
                  VALUES (?, ?, ?, ?, ?, ?) RETURNING id'
@@ -126,11 +156,13 @@ class OrderController {
                 0,
                 $total,
             ]);
-            $orderId = (int)$insertStmt->fetchColumn();
 
-            if ($orderId === 0) {
+            // ✅ إصلاح: التحقق من false قبل الـ cast
+            $raw = $insertStmt->fetchColumn();
+            if (!$raw) {
                 throw new \RuntimeException('Failed to retrieve order ID after insert');
             }
+            $orderId = (int)$raw;
 
             $insertItem = $db->prepare(
                 'INSERT INTO order_items (order_id, product_id, name, image_url, price, quantity, size)
@@ -154,10 +186,8 @@ class OrderController {
             jsonSuccess(['order_id' => $orderId], 'Order placed successfully', 201);
 
         } catch (\Throwable $e) {
-            // ✅ إصلاح: catch Throwable بدلاً من Exception
-            // يصيد كلاً من Exception و Error (مثل undefined constant في PHP 8)
             $db->rollBack();
-            jsonError('Failed to place order: ' . $e->getMessage() . ' | File: ' . $e->getFile() . ' | Line: ' . $e->getLine(), 500);
+            jsonError('Failed to place order: ' . $e->getMessage(), 500);
         }
     }
 }
