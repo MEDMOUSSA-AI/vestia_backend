@@ -1,10 +1,11 @@
 <?php
 if (isset($_GET['v'])) { echo json_encode(['v' => '2.0', 'file' => __FILE__]); exit; }
 // ============================================================
-// VESTIA API — Main Router  (api/index.php)  ✅ النسخة المعدّلة
+// VESTIA API — Main Router  (api/index.php)
 // ============================================================
 error_reporting(E_ALL);
 ini_set('display_errors', 1);
+
 // ── CORS ──
 header('Content-Type: application/json; charset=UTF-8');
 header('Access-Control-Allow-Origin: *');
@@ -32,6 +33,7 @@ require_once __DIR__ . '/controllers/ProfileController.php';
 require_once __DIR__ . '/controllers/TryOnController.php';
 
 set_exception_handler(function(\Throwable $e) {
+    error_log('💥 Uncaught exception: ' . $e->getMessage() . ' in ' . $e->getFile() . ':' . $e->getLine());
     http_response_code(500);
     echo json_encode([
         'success' => false,
@@ -51,6 +53,14 @@ $segments  = array_values(array_filter(explode('/', trim($path, '/'))));
 $resource  = $segments[0] ?? '';
 $id        = $segments[1] ?? null;
 $sub       = $segments[2] ?? null;
+
+// ── DEBUG: سجّل كل طلب POST /orders ──
+if ($resource === 'orders' && $method === 'POST') {
+    error_log('🔥 POST /orders reached router');
+    error_log('📥 Body: ' . file_get_contents('php://input'));
+    $allHeaders = getallheaders();
+    error_log('📋 Headers: ' . json_encode($allHeaders));
+}
 
 // ── DEBUG TEMP ──
 if ($resource === 'debug-search') {
@@ -73,7 +83,6 @@ if ($resource === 'debug-search') {
     echo json_encode(['files' => $found, 'dir' => __DIR__]);
     exit;
 }
-// ── END DEBUG ──
 
 // ── Route Table ──
 match(true) {
