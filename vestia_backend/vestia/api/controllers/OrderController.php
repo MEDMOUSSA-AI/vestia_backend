@@ -157,7 +157,7 @@ class OrderController {
             // ✅ إصلاح: catch Throwable بدلاً من Exception
             // يصيد كلاً من Exception و Error (مثل undefined constant في PHP 8)
             $db->rollBack();
-            jsonError('Failed to place order: ' . $e->getMessage(), 500);
+            jsonError('Failed to place order: ' . $e->getMessage() . ' | File: ' . $e->getFile() . ' | Line: ' . $e->getLine(), 500);
         }
     }
 }
