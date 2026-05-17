@@ -1,4 +1,16 @@
+Options -Indexes
+
+# ── تمرير هيدر Authorization لـ PHP (ضروري على Apache) ──
+SetEnvIf Authorization "(.*)" HTTP_AUTHORIZATION=$1
 RewriteEngine On
+RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
+
+# ── توجيه كل الطلبات إلى index.php ──
 RewriteCond %{REQUEST_FILENAME} !-f
 RewriteCond %{REQUEST_FILENAME} !-d
 RewriteRule ^(.*)$ index.php [QSA,L]
+
+# ── منع الوصول المباشر لملفات الإعداد ──
+<FilesMatch "\.(env|log|sql|sh)$">
+    Require all denied
+</FilesMatch>
