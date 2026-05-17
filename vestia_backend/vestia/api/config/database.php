@@ -33,7 +33,7 @@ function getDB(): PDO {
             $pdo->exec("SET client_encoding TO 'UTF8'");
         } catch (PDOException $e) {
             http_response_code(500);
-            die(json_encode(['success' => false, 'message' => 'Database connection failed.']));
+         die(json_encode(['success' => false, 'message' => $e->getMessage()]));
         }
     }
     return $pdo;
