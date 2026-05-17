@@ -40,16 +40,13 @@ class OrderController {
             foreach ($order['items'] as &$item) {
                 $item['image_url'] = fixImageUrl($item['image_url']);
 
-                // ✅ التحقق من التقييم مرتبط بالطلبية تحديداً
-                // ✅ try-catch لحماية الـ API في حال عمود order_id غير موجود بعد
                 try {
                     $rev = $db->prepare(
                         'SELECT id, rating FROM reviews
                          WHERE user_id = ? AND product_id = ? AND order_id = ?'
                     );
                     $rev->execute([$user['id'], $item['product_id'], $order['id']]);
-                } catch (\Exception $e) {
-                    // fallback: إذا لم يكن عمود order_id موجوداً بعد
+                } catch (\Throwable $e) {
                     $rev = $db->prepare(
                         'SELECT id, rating FROM reviews
                          WHERE user_id = ? AND product_id = ?'
@@ -101,28 +98,50 @@ class OrderController {
         $stmt->execute([$user['id']]);
         $cartItems = $stmt->fetchAll();
 
-        if (empty($cartItems)) jsonError('Cart is empty', 422);
+        if (empty($cartItems)) {
+            jsonError('Cart is empty', 422);
+        }
 
+        // ✅ إصلاح: SHIPPING_FEE قد يكون غير معرّف → يُطلق Error في PHP 8
+        // catch (Exception) لا يصيده، لذا نضع fallback آمن
+        $shippingFee = defined('SHIPPING_FEE') ? (float)SHIPPING_FEE : 80.0;
         $subtotal    = array_sum(array_map(fn($i) => $i['price'] * $i['quantity'], $cartItems));
-        $shippingFee = SHIPPING_FEE;
         $total       = $subtotal + $shippingFee;
 
         $db->beginTransaction();
         try {
-            // ✅ RETURNING id بدلاً من lastInsertId()
+            // ✅ RETURNING id صحيح مع PostgreSQL
             $insertStmt = $db->prepare(
-                'INSERT INTO orders (user_id, status, subtotal, shipping_fee, vat, total) VALUES (?,?,?,?,?,?) RETURNING id'
+                'INSERT INTO orders (user_id, status, subtotal, shipping_fee, vat, total)
+                 VALUES (?, ?, ?, ?, ?, ?) RETURNING id'
             );
-            $insertStmt->execute([$user['id'], 'Packing', $subtotal, $shippingFee, 0, $total]);
+            $insertStmt->execute([
+                $user['id'],
+                'Packing',
+                $subtotal,
+                $shippingFee,
+                0,
+                $total,
+            ]);
             $orderId = (int)$insertStmt->fetchColumn();
 
+            if ($orderId === 0) {
+                throw new \RuntimeException('Failed to retrieve order ID after insert');
+            }
+
             $insertItem = $db->prepare(
-                'INSERT INTO order_items (order_id, product_id, name, image_url, price, quantity, size) VALUES (?,?,?,?,?,?,?)'
+                'INSERT INTO order_items (order_id, product_id, name, image_url, price, quantity, size)
+                 VALUES (?, ?, ?, ?, ?, ?, ?)'
             );
             foreach ($cartItems as $item) {
                 $insertItem->execute([
-                    $orderId, $item['product_id'], $item['name'],
-                    $item['image_url'], $item['price'], $item['quantity'], $item['size']
+                    $orderId,
+                    $item['product_id'],
+                    $item['name'],
+                    $item['image_url'],
+                    $item['price'],
+                    $item['quantity'],
+                    $item['size'],
                 ]);
             }
 
@@ -131,9 +150,11 @@ class OrderController {
             $db->commit();
             jsonSuccess(['order_id' => $orderId], 'Order placed successfully', 201);
 
-        } catch (Exception $e) {
+        } catch (\Throwable $e) {
+            // ✅ إصلاح: catch Throwable بدلاً من Exception
+            // يصيد كلاً من Exception و Error (مثل undefined constant في PHP 8)
             $db->rollBack();
-           jsonError($e->getMessage(), 500);
+            jsonError('Failed to place order: ' . $e->getMessage(), 500);
         }
     }
 }
