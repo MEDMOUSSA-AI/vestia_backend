@@ -1,7 +1,7 @@
 <?php
-if (isset($_GET['v'])) { echo json_encode(['v' => '2.0', 'file' => __FILE__]); exit; }
+if (isset($_GET['v'])) { echo json_encode(['v' => '3.0', 'file' => __FILE__]); exit; }
 // ============================================================
-// VESTIA API — Main Router  (api/index.php)
+// VESTIA API — Main Router
 // ============================================================
 error_reporting(E_ALL);
 ini_set('display_errors', 1);
@@ -33,7 +33,7 @@ require_once __DIR__ . '/controllers/ProfileController.php';
 require_once __DIR__ . '/controllers/TryOnController.php';
 
 set_exception_handler(function(\Throwable $e) {
-    error_log('💥 Uncaught exception: ' . $e->getMessage() . ' in ' . $e->getFile() . ':' . $e->getLine());
+    error_log('💥 Exception: ' . $e->getMessage() . ' in ' . $e->getFile() . ':' . $e->getLine());
     http_response_code(500);
     echo json_encode([
         'success' => false,
@@ -54,33 +54,53 @@ $resource  = $segments[0] ?? '';
 $id        = $segments[1] ?? null;
 $sub       = $segments[2] ?? null;
 
-// ── DEBUG: سجّل كل طلب POST /orders ──
-if ($resource === 'orders' && $method === 'POST') {
-    error_log('🔥 POST /orders reached router');
-    error_log('📥 Body: ' . file_get_contents('php://input'));
-    $allHeaders = getallheaders();
-    error_log('📋 Headers: ' . json_encode($allHeaders));
-}
+// ── DEBUG ENDPOINT مؤقت ──
+if ($resource === 'debug-orders' && $method === 'GET') {
+    $headers    = getallheaders();
+    $authHeader = $headers['Authorization']
+               ?? $headers['authorization']
+               ?? $_SERVER['HTTP_AUTHORIZATION']
+               ?? $_SERVER['REDIRECT_HTTP_AUTHORIZATION']
+               ?? 'MISSING';
 
-// ── DEBUG TEMP ──
-if ($resource === 'debug-search') {
-    $found = [];
+    $dbStatus  = 'unknown';
+    $cartCount = 0;
+    $userId    = null;
+
     try {
-        $files = new RecursiveIteratorIterator(
-            new RecursiveDirectoryIterator(__DIR__, RecursiveDirectoryIterator::SKIP_DOTS)
-        );
-        foreach ($files as $file) {
-            if ($file->getExtension() === 'php') {
-                $content = @file_get_contents($file->getPathname());
-                if ($content && strpos($content, 'Please try again') !== false) {
-                    $found[] = $file->getPathname();
-                }
+        $db = getDB();
+        $db->query('SELECT 1');
+        $dbStatus = 'connected';
+
+        if ($authHeader !== 'MISSING' && str_starts_with($authHeader, 'Bearer ')) {
+            $token = trim(substr($authHeader, 7));
+            $stmt  = $db->prepare(
+                'SELECT u.id FROM auth_tokens t
+                 JOIN users u ON u.id = t.user_id
+                 WHERE t.token = ? AND t.expires_at > NOW()'
+            );
+            $stmt->execute([$token]);
+            $user = $stmt->fetch();
+            if ($user) {
+                $userId    = $user['id'];
+                $cartStmt  = $db->prepare('SELECT COUNT(*) FROM cart_items WHERE user_id = ?');
+                $cartStmt->execute([$userId]);
+                $cartCount = (int)$cartStmt->fetchColumn();
             }
         }
     } catch (\Throwable $e) {
-        $found[] = 'ERROR: ' . $e->getMessage();
+        $dbStatus = 'ERROR: ' . $e->getMessage();
     }
-    echo json_encode(['files' => $found, 'dir' => __DIR__]);
+
+    echo json_encode([
+        'index_version' => '3.0',
+        'auth_header'   => substr($authHeader, 0, 40) . '...',
+        'db_status'     => $dbStatus,
+        'user_id'       => $userId,
+        'cart_items'    => $cartCount,
+        'php_version'   => PHP_VERSION,
+        'order_exists'  => file_exists(__DIR__ . '/controllers/OrderController.php'),
+    ]);
     exit;
 }
 
