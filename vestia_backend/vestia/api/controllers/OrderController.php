@@ -1,6 +1,6 @@
 <?php
 // ============================================================
-// VESTIA API — Order Controller  ✅ النسخة المُصلَّحة نهائياً
+// VESTIA API — Order Controller
 // ============================================================
 class OrderController {
 
@@ -90,7 +90,6 @@ class OrderController {
         jsonSuccess(['orders' => array_values($ordersMap)]);
     }
 
-    // ─────────────────────────────────────────────────────────
     public static function show(string $id): void {
         $user = getAuthUser();
         $db   = getDB();
@@ -113,14 +112,10 @@ class OrderController {
         jsonSuccess(['order' => $order]);
     }
 
-    // ─────────────────────────────────────────────────────────
     public static function store(): void {
         $user = getAuthUser();
         $db   = getDB();
 
-        error_log('📦 store() - user_id: ' . $user['id']);
-
-        // ✅ قراءة العربة من قاعدة البيانات مباشرة (بدون is_active لتفادي خطأ العمود)
         $stmt = $db->prepare(
             "SELECT c.id, c.quantity, c.size,
                     p.id AS product_id, p.name, p.price, p.image_url
@@ -131,29 +126,27 @@ class OrderController {
         $stmt->execute([$user['id']]);
         $cartItems = $stmt->fetchAll();
 
-        error_log('🛒 cart items count: ' . count($cartItems));
-
         if (empty($cartItems)) {
-            error_log('❌ Cart is empty for user: ' . $user['id']);
             jsonError('Cart is empty', 422);
             return;
         }
 
         $shippingFee = defined('SHIPPING_FEE') ? (float)SHIPPING_FEE : 80.0;
-        $subtotal    = 0;
+        $subtotal    = 0.0;
         foreach ($cartItems as $item) {
             $subtotal += (float)$item['price'] * (int)$item['quantity'];
         }
         $total = $subtotal + $shippingFee;
 
-        error_log("💰 subtotal=$subtotal shipping=$shippingFee total=$total");
-
         $db->beginTransaction();
         try {
-            // ✅ RETURNING id — صحيح مع PostgreSQL
+            // ✅ الإصلاح الرئيسي: CAST(? AS order_status)
+            // PDO لا يُرسل string لعمود ENUM في PostgreSQL بشكل صحيح
+            // يجب تحديد النوع صراحةً
             $insertStmt = $db->prepare(
                 'INSERT INTO orders (user_id, status, subtotal, shipping_fee, vat, total)
-                 VALUES (?, ?, ?, ?, ?, ?) RETURNING id'
+                 VALUES (?, CAST(? AS order_status), ?, ?, ?, ?)
+                 RETURNING id'
             );
             $insertStmt->execute([
                 $user['id'],
@@ -165,9 +158,8 @@ class OrderController {
             ]);
 
             $orderId = $insertStmt->fetchColumn();
-            error_log('🆔 raw orderId: ' . var_export($orderId, true));
 
-            if ($orderId === false || $orderId === null || $orderId == 0) {
+            if ($orderId === false || $orderId === null || (int)$orderId === 0) {
                 throw new \RuntimeException('Failed to retrieve order ID after insert');
             }
             $orderId = (int)$orderId;
@@ -179,7 +171,6 @@ class OrderController {
 
             foreach ($cartItems as $item) {
                 $size = !empty($item['size']) ? $item['size'] : 'M';
-                error_log('📝 inserting item: ' . $item['name'] . ' size=' . $size);
                 $insertItem->execute([
                     $orderId,
                     $item['product_id'],
@@ -191,17 +182,14 @@ class OrderController {
                 ]);
             }
 
-            // ✅ حذف العربة بعد إتمام الطلب
             $db->prepare('DELETE FROM cart_items WHERE user_id = ?')
                ->execute([$user['id']]);
 
             $db->commit();
-            error_log('✅ Order placed successfully: ' . $orderId);
             jsonSuccess(['order_id' => $orderId], 'Order placed successfully', 201);
 
         } catch (\Throwable $e) {
             $db->rollBack();
-            error_log('❌ store() error: ' . $e->getMessage() . ' | Trace: ' . $e->getTraceAsString());
             jsonError('Failed to place order: ' . $e->getMessage(), 500);
         }
     }
