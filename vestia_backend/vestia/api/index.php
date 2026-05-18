@@ -54,53 +54,50 @@ $resource  = $segments[0] ?? '';
 $id        = $segments[1] ?? null;
 $sub       = $segments[2] ?? null;
 
-// ── DEBUG ENDPOINT مؤقت ──
+// ── DEBUG ENDPOINT ──
 if ($resource === 'debug-orders' && $method === 'GET') {
-    $headers    = getallheaders();
-    $authHeader = $headers['Authorization']
-               ?? $headers['authorization']
-               ?? $_SERVER['HTTP_AUTHORIZATION']
-               ?? $_SERVER['REDIRECT_HTTP_AUTHORIZATION']
-               ?? 'MISSING';
-
-    $dbStatus  = 'unknown';
-    $cartCount = 0;
-    $userId    = null;
-
+    $results = [];
     try {
         $db = getDB();
-        $db->query('SELECT 1');
-        $dbStatus = 'connected';
+        $results['db_connected'] = true;
+        $results['php_version']  = PHP_VERSION;
+        $results['SHIPPING_FEE'] = defined('SHIPPING_FEE') ? SHIPPING_FEE : 'NOT DEFINED';
 
-        if ($authHeader !== 'MISSING' && str_starts_with($authHeader, 'Bearer ')) {
-            $token = trim(substr($authHeader, 7));
-            $stmt  = $db->prepare(
-                'SELECT u.id FROM auth_tokens t
-                 JOIN users u ON u.id = t.user_id
-                 WHERE t.token = ? AND t.expires_at > NOW()'
-            );
-            $stmt->execute([$token]);
-            $user = $stmt->fetch();
-            if ($user) {
-                $userId    = $user['id'];
-                $cartStmt  = $db->prepare('SELECT COUNT(*) FROM cart_items WHERE user_id = ?');
-                $cartStmt->execute([$userId]);
-                $cartCount = (int)$cartStmt->fetchColumn();
-            }
+        // أعمدة orders
+        $s = $db->query("SELECT column_name, data_type FROM information_schema.columns WHERE table_name='orders' ORDER BY ordinal_position");
+        $results['orders_columns'] = $s->fetchAll(PDO::FETCH_ASSOC);
+
+        // أعمدة order_items
+        $s = $db->query("SELECT column_name, data_type FROM information_schema.columns WHERE table_name='order_items' ORDER BY ordinal_position");
+        $results['order_items_columns'] = $s->fetchAll(PDO::FETCH_ASSOC);
+
+        // عينة من cart_items
+        $s = $db->query("SELECT c.*, p.name, p.price FROM cart_items c JOIN products p ON p.id = c.product_id LIMIT 5");
+        $results['cart_sample'] = $s->fetchAll(PDO::FETCH_ASSOC);
+
+        // اختبار INSERT في orders
+        $db->beginTransaction();
+        try {
+            $s = $db->prepare('INSERT INTO orders (user_id, status, subtotal, shipping_fee, vat, total) VALUES (?, CAST(? AS order_status), ?, ?, ?, ?) RETURNING id');
+            $s->execute([1, 'Packing', 100.0, 80.0, 0, 180.0]);
+            $oid = $s->fetchColumn();
+            $results['test_orders_insert'] = 'SUCCESS id=' . $oid;
+
+            // اختبار INSERT في order_items
+            $s2 = $db->prepare('INSERT INTO order_items (order_id, product_id, name, image_url, price, quantity, size) VALUES (?, ?, ?, ?, ?, ?, ?)');
+            $s2->execute([$oid, 1, 'Test', 'http://x.com/x.jpg', 100.0, 1, 'M']);
+            $results['test_order_items_insert'] = 'SUCCESS';
+
+            $db->rollBack();
+        } catch (\Throwable $e) {
+            $db->rollBack();
+            $results['test_insert_error'] = $e->getMessage();
         }
-    } catch (\Throwable $e) {
-        $dbStatus = 'ERROR: ' . $e->getMessage();
-    }
 
-    echo json_encode([
-        'index_version' => '3.0',
-        'auth_header'   => substr($authHeader, 0, 40) . '...',
-        'db_status'     => $dbStatus,
-        'user_id'       => $userId,
-        'cart_items'    => $cartCount,
-        'php_version'   => PHP_VERSION,
-        'order_exists'  => file_exists(__DIR__ . '/controllers/OrderController.php'),
-    ]);
+    } catch (\Throwable $e) {
+        $results['fatal_error'] = $e->getMessage();
+    }
+    echo json_encode(['status' => 'ok', 'results' => $results], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
     exit;
 }
 
