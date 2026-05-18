@@ -30,7 +30,6 @@ class OrderController {
                 o.vat,
                 o.total,
                 o.created_at,
-
                 oi.id         AS item_id,
                 oi.name       AS item_name,
                 oi.image_url  AS item_image_url,
@@ -38,10 +37,8 @@ class OrderController {
                 oi.quantity   AS item_quantity,
                 oi.size       AS item_size,
                 oi.product_id AS item_product_id,
-
                 r.id     AS review_id,
                 r.rating AS review_rating
-
              FROM orders o
              LEFT JOIN order_items oi ON oi.order_id = o.id
              LEFT JOIN reviews r
@@ -58,7 +55,6 @@ class OrderController {
         $ordersMap = [];
         foreach ($rows as $row) {
             $oid = $row['order_id'];
-
             if (!isset($ordersMap[$oid])) {
                 $ordersMap[$oid] = [
                     'id'           => (int)$oid,
@@ -71,7 +67,6 @@ class OrderController {
                     'items'        => [],
                 ];
             }
-
             if ($row['item_id'] !== null) {
                 $ordersMap[$oid]['items'][] = [
                     'id'         => (int)$row['item_id'],
@@ -116,8 +111,9 @@ class OrderController {
         $user = getAuthUser();
         $db   = getDB();
 
+        // قراءة عناصر السلة
         $stmt = $db->prepare(
-            "SELECT c.id, c.quantity, c.size,
+            "SELECT c.quantity, c.size,
                     p.id AS product_id, p.name, p.price, p.image_url
              FROM cart_items c
              JOIN products p ON p.id = c.product_id
@@ -131,7 +127,8 @@ class OrderController {
             return;
         }
 
-        $shippingFee = defined('SHIPPING_FEE') ? (float)SHIPPING_FEE : 80.0;
+        // ✅ shipping_fee و vat لهما default في DB — نحسب فقط subtotal و total
+        $shippingFee = 80.0;
         $subtotal    = 0.0;
         foreach ($cartItems as $item) {
             $subtotal += (float)$item['price'] * (int)$item['quantity'];
@@ -140,20 +137,16 @@ class OrderController {
 
         $db->beginTransaction();
         try {
-            // ✅ الإصلاح الرئيسي: CAST(? AS order_status)
-            // PDO لا يُرسل string لعمود ENUM في PostgreSQL بشكل صحيح
-            // يجب تحديد النوع صراحةً
+            // ✅ الحل النهائي: لا نُرسل status أبداً — يأخذ default 'Packing' تلقائياً
+            // هذا يتجنب مشكلة ENUM casting في PDO نهائياً
             $insertStmt = $db->prepare(
-                'INSERT INTO orders (user_id, status, subtotal, shipping_fee, vat, total)
-                 VALUES (?, CAST(? AS order_status), ?, ?, ?, ?)
+                'INSERT INTO orders (user_id, subtotal, total)
+                 VALUES (?, ?, ?)
                  RETURNING id'
             );
             $insertStmt->execute([
                 $user['id'],
-                'Packing',
                 $subtotal,
-                $shippingFee,
-                0,
                 $total,
             ]);
 
@@ -168,7 +161,6 @@ class OrderController {
                 'INSERT INTO order_items (order_id, product_id, name, image_url, price, quantity, size)
                  VALUES (?, ?, ?, ?, ?, ?, ?)'
             );
-
             foreach ($cartItems as $item) {
                 $size = !empty($item['size']) ? $item['size'] : 'M';
                 $insertItem->execute([
@@ -182,6 +174,7 @@ class OrderController {
                 ]);
             }
 
+            // حذف السلة بعد إتمام الطلب
             $db->prepare('DELETE FROM cart_items WHERE user_id = ?')
                ->execute([$user['id']]);
 
